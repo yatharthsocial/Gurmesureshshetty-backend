@@ -1,9 +1,12 @@
 import { Router } from 'express'
 import { prisma } from '../lib/prisma.js'
+import { upload } from '../lib/upload.js'
+import { uploadImageBuffer } from '../lib/cloudinary.js'
 
 export const grievancesRouter = Router()
 
 const REQUIRED_FIELDS = ['name', 'phone', 'panchayat', 'issueType', 'details']
+const CLOUDINARY_FOLDER = 'gurmesureshshetty/grievances'
 
 function validateGrievanceInput(body) {
   const invalidFields = REQUIRED_FIELDS.filter(
@@ -12,7 +15,7 @@ function validateGrievanceInput(body) {
   return invalidFields
 }
 
-grievancesRouter.post('/', async (req, res, next) => {
+grievancesRouter.post('/', upload.single('image'), async (req, res, next) => {
   try {
     const invalidFields = validateGrievanceInput(req.body || {})
     if (invalidFields.length > 0) {
@@ -24,6 +27,19 @@ grievancesRouter.post('/', async (req, res, next) => {
 
     const { name, phone, panchayat, issueType, details } = req.body
 
+    let imageUrl = null
+    if (req.file) {
+      try {
+        const result = await uploadImageBuffer(req.file.buffer, CLOUDINARY_FOLDER)
+        imageUrl = result.secure_url
+      } catch (uploadErr) {
+        console.error('Cloudinary upload failed:', uploadErr)
+        const err = new Error('Image upload failed. Please try again.')
+        err.status = 502
+        throw err
+      }
+    }
+
     const grievance = await prisma.grievance.create({
       data: {
         name: name.trim(),
@@ -31,6 +47,7 @@ grievancesRouter.post('/', async (req, res, next) => {
         panchayat: panchayat.trim(),
         issueType: issueType.trim(),
         details: details.trim(),
+        imageUrl,
       },
     })
 
